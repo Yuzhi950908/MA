@@ -63,6 +63,7 @@ sequence_length=past
 
 
 ###Training dataset###
+num_features=1
 start=past+future
 end=train_spilt
 train_data=train_data[start:end]
@@ -83,18 +84,13 @@ for i in range(0,batch_size):
 
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #最重要的步骤，把数据整形成keras需要的样子
-#首先 x有5个值，y有4个值，得先补成一样的列数
-x_train_padded = keras.preprocessing.sequence.pad_sequences(x_train, maxlen=5, padding='post', dtype='float32')
-y_train_padded = keras.preprocessing.sequence.pad_sequences(y_train, maxlen=5, padding='post', dtype='float32')
-x_train_array= np.array(x_train_padded)
-y_train_array= np.array(y_train_padded)
-#然后还得在reshape一次，shape成keras需要的x_train 形状：(batch_size, sequence_length, num_features)
-x_train_reshaped= x_train_array.reshape(batch_size,sequence_length,1)
-y_train_reshaped= y_train_array.reshape(batch_size,sequence_length,1)
-print(x_train_reshaped.shape)
-#把shape打印出来就特别明了。这里数据是99行，然后每行是一个大的元组，里面有个5个小元组代表输入模型的步骤，每个小元组里就一个特征值
+x_train_tensor = tf.convert_to_tensor(x_train, dtype=tf.float32)
+y_train_tensor = tf.convert_to_tensor(y_train, dtype=tf.float32)
+x_train_reshaped = tf.reshape(x_train_tensor, [batch_size, past, num_features])
+y_train_reshaped = tf.reshape(y_train_tensor, [batch_size, future, num_features])
+#print(x_train_reshaped.shape)
+#这里x_train_tensor:是99行，然后每行里面有个5个数
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 
 dataset_train=keras.preprocessing.timeseries_dataset_from_array(
     x_train_reshaped,
@@ -110,7 +106,7 @@ var_split=int(len(capacity)*var_split_rate)
 start=train_spilt+windowsize       #!这里keras 把第一个windows框 也避开了，虽然不知道为什么。
 end=train_spilt+var_split
 Validation_data=capacity[start:end]
-print(len(Validation_data))#24     #一共就24个数据
+#print(len(Validation_data))#24     #一共就24个数据
 var_batch_size=len(Validation_data)-windowsize#但是批次是15个就因为碰到最后一个数据就停了
 x_val=[]
 for i in range(0,var_batch_size):
@@ -122,12 +118,10 @@ for i in range(0,var_batch_size):
     label_val=Validation_data[i+past:i+windowsize]
     y_val.append(label_val)
 
-x_val_padded = keras.preprocessing.sequence.pad_sequences(x_val, maxlen=5, padding='post', dtype='float32')
-y_val_padded = keras.preprocessing.sequence.pad_sequences(y_val, maxlen=5, padding='post', dtype='float32')
-x_val_array= np.array(x_val_padded)
-y_val_array= np.array(y_val_padded)
-x_val_reshaped= x_val_array.reshape(var_batch_size,sequence_length,1)
-y_val_reshaped= y_val_array.reshape(var_batch_size,sequence_length,1)
+x_val_tensor = tf.convert_to_tensor(x_train, dtype=tf.float32)
+y_val_tensor = tf.convert_to_tensor(y_train, dtype=tf.float32)
+x_val_reshaped = tf.reshape(x_train_tensor, [batch_size, past, num_features])
+y_val_reshaped = tf.reshape(y_train_tensor, [batch_size, future, num_features])
 
 dataset_val = keras.preprocessing.timeseries_dataset_from_array(
     x_val_reshaped,
@@ -138,17 +132,16 @@ dataset_val = keras.preprocessing.timeseries_dataset_from_array(
 )
 
 
-
-
 ###LSTM model training###
-##############################################################################################################################
+################################################################################################################################
 #input一定是这样的,5个神经元，每个神经元能放N个特征进去。 这里单纯就是塑框架形状，还没有训练.
 learning_rate = 0.001
+#？？？？这里 input layer期待的是数据是(99批，一批5步，至于none意味着每步里有多少特征无所谓
 inputs = keras.layers.Input(shape=(x_train_reshaped.shape[0], x_train_reshaped.shape[1]))
 #中间暂时设定32个LSTM unit，之后可以改
 lstm_out = keras.layers.LSTM(32)(inputs)
 #一次预测4个步
-outputs = keras.layers.Dense(4)(y_train_reshaped)
+outputs = keras.layers.Dense(4)(lstm_out)
 
 model = keras.Model(inputs=inputs, outputs=outputs)
 model.compile(optimizer=keras.optimizers.Adam(learning_rate=learning_rate), loss="mse")
@@ -157,18 +150,16 @@ model.summary()
 
 
 
-#sjafihiauh
-
 
 #training
 ################################################################################################################################
 
-epochs = 10
+epochs = 50
 
 #为了防止overfit，只要权重不咋变了，就结束，不要在训练了。所以设一个 call_funktion
 #相当于保存weights的快照的空文件，之后训练完之后，可以权重可视化。
 path_checkpoint = "lstm_model_checkpoint.weights.h5"
-#预先设定好参数,不允许它小于0，然后如果2个epoch，权重都不变了。就结束直接。
+#？？？？？？预先设定好参数,不允许它小于0，然后如果2个epoch，权重都不变了。就结束直接。但是我不知道为什么epoch应该48次就该停了，但它没停下来，也没报错
 es_callback = keras.callbacks.EarlyStopping(monitor="val_loss", min_delta=0, patience=2)
 
 
@@ -192,7 +183,6 @@ history = model.fit(
 print(history)
 ################################################################################################################################
 
-#sjijafsjoa
 
 #weight visualize
 def visualize_loss(history, title):
