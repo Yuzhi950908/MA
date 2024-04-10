@@ -87,9 +87,10 @@ for i in range(0,batch_size):
 x_train_tensor = tf.convert_to_tensor(x_train, dtype=tf.float32)
 y_train_tensor = tf.convert_to_tensor(y_train, dtype=tf.float32)
 x_train_reshaped = tf.reshape(x_train_tensor, [batch_size, past, num_features])
-y_train_reshaped = tf.reshape(y_train_tensor, [batch_size, future, num_features])
-#print(x_train_reshaped.shape)
-#这里x_train_tensor:是99行，然后每行里面有个5个数
+y_train_reshaped = tf.reshape(y_train_tensor, [batch_size,future, num_features])
+print(x_train_reshaped.shape)
+print(y_train_reshaped.shape)
+#这里x_train_tensor:是99行，然后每行里面有个5个数，shape(99,5)，reshape 成(99,5,1)
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 dataset_train=keras.preprocessing.timeseries_dataset_from_array(
@@ -101,10 +102,10 @@ dataset_train=keras.preprocessing.timeseries_dataset_from_array(
 )
 
 ###Validation dataset###
-var_split_rate=0.2
-var_split=int(len(capacity)*var_split_rate)
+val_split_rate=0.2
+val_split=int(len(capacity)*val_split_rate)
 start=train_spilt+windowsize       #!这里keras 把第一个windows框 也避开了，虽然不知道为什么。
-end=train_spilt+var_split
+end=train_spilt+val_split
 Validation_data=capacity[start:end]
 #print(len(Validation_data))#24     #一共就24个数据
 var_batch_size=len(Validation_data)-windowsize#但是批次是15个就因为碰到最后一个数据就停了
@@ -118,26 +119,26 @@ for i in range(0,var_batch_size):
     label_val=Validation_data[i+past:i+windowsize]
     y_val.append(label_val)
 
-x_val_tensor = tf.convert_to_tensor(x_train, dtype=tf.float32)
-y_val_tensor = tf.convert_to_tensor(y_train, dtype=tf.float32)
-x_val_reshaped = tf.reshape(x_train_tensor, [batch_size, past, num_features])
-y_val_reshaped = tf.reshape(y_train_tensor, [batch_size, future, num_features])
-
+x_val_tensor = tf.convert_to_tensor(x_val, dtype=tf.float32)
+y_val_tensor = tf.convert_to_tensor(y_val, dtype=tf.float32)
+x_val_reshaped = tf.reshape(x_val_tensor, [var_batch_size, past, num_features])
+y_val_reshaped = tf.reshape(y_val_tensor, [var_batch_size,future, num_features])
+print(x_val_reshaped.shape)
+print(y_val_reshaped.shape)#
 dataset_val = keras.preprocessing.timeseries_dataset_from_array(
     x_val_reshaped,
     y_val_reshaped,
-    sequence_length=sequence_length,
+    sequence_length=past,
     sampling_rate=1,
     batch_size=var_batch_size,
 )
-
 
 ###LSTM model training###
 ################################################################################################################################
 #input一定是这样的,5个神经元，每个神经元能放N个特征进去。 这里单纯就是塑框架形状，还没有训练.
 learning_rate = 0.001
-#？？？？这里 input layer期待的是数据是(99批，一批5步，至于none意味着每步里有多少特征无所谓
-inputs = keras.layers.Input(shape=(x_train_reshaped.shape[0], x_train_reshaped.shape[1]))
+#这里 input layer期待的是数据应该是(none,5,1)才对 none是样本数，5是时序，1是特征数量
+inputs = keras.layers.Input(shape=(past, num_features))
 #中间暂时设定32个LSTM unit，之后可以改
 lstm_out = keras.layers.LSTM(32)(inputs)
 #一次预测4个步
@@ -146,16 +147,13 @@ outputs = keras.layers.Dense(4)(lstm_out)
 model = keras.Model(inputs=inputs, outputs=outputs)
 model.compile(optimizer=keras.optimizers.Adam(learning_rate=learning_rate), loss="mse")
 model.summary()
+#我到这里model出来的结果是和keras上的例子一模一样的。
 ################################################################################################################################
-
-
 
 
 #training
 ################################################################################################################################
-
 epochs = 50
-
 #为了防止overfit，只要权重不咋变了，就结束，不要在训练了。所以设一个 call_funktion
 #相当于保存weights的快照的空文件，之后训练完之后，可以权重可视化。
 path_checkpoint = "lstm_model_checkpoint.weights.h5"
@@ -180,9 +178,12 @@ history = model.fit(
     validation_data=dataset_val,
     callbacks=[es_callback, modelckpt_callback],
 )
-print(history)
+
 ################################################################################################################################
 
+
+#重点每个epoch 训练集，和验证集是交替训练的。就是为了让模型多见点不同的数据。但是我没想明白，为什么不把验证集也做个标准化呢？除了验证集，连测试集都做标准化要，所有history里就两个keys，一个train_loss, 一个val_loss.
+#就必须要用loss=history.history["loss"]把train loss的不同epoch的值调出来。所以epochs和loss 长度一摸一样的！这个可视化代码不会改变的可以直接记住它。以后需要参考就好了
 
 #weight visualize
 def visualize_loss(history, title):
@@ -199,3 +200,29 @@ def visualize_loss(history, title):
     plt.show()
 
 visualize_loss(history, "Training and Validation Loss")
+
+
+###Prediction###
+#不用分了剩下的全拿去test。
+Prediction_data=capacity[train_spilt+val_split:]
+Prediction_data=min_max_normalization(Prediction_data)
+data_len=len(Prediction_data)
+print(data_len)
+
+
+batch_size=data_len-windowsize
+x_pre=[]
+for i in range(0,batch_size):
+    input=Prediction_data[i:i+past]
+    x_pre.append(input)
+
+#然后把x_pre拿去还是整成keras想要的样子
+num_features=1
+x_pre_tensor=tf.convert_to_tensor(x_pre, dtype=tf.float32)
+x_pre_reshaped=tf.reshape(x_pre_tensor,[batch_size, past, num_features])
+#print(x_pre_reshaped.shape),(9, 5, 1)
+#然后进模型预测下面4个数。
+
+predictions = model.predict(x_pre_reshaped)
+
+#可视化
