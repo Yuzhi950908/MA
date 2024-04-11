@@ -222,10 +222,27 @@ for i in range(0,batch_size):
 #然后把x_pre拿去还是整成keras想要的样子
 num_features=1
 x_pre_tensor=tf.convert_to_tensor(x_pre, dtype=tf.float32)
+
 x_pre_reshaped=tf.reshape(x_pre_tensor,[batch_size, past, num_features])
 #print(x_pre_reshaped.shape),(9, 5, 1)
-#然后进模型预测下面4个数。
 
+#获取9组预测值。并且可视化出来和真实值对比
+#!!!!!这里我又犯了一个错误预测是一下子9个批次一起进去的，一次性出来一个(9,4,1)的张量。不能一次一次预测的。画图调用即可
 predictions = multi_lstm_model.predict(x_pre_reshaped)
+#print(predictions)
+#调最后一个window, 画图看一下就行了
+true_values = Prediction_data[9:9+windowsize]
+#print(true_values)
+predicted_values = predictions[8]
+print(predicted_values)
 
-#可视化
+# 绘制对比图
+plt.scatter(range(1,len(true_values)+1), true_values, label='True Capacity')
+plt.scatter([6,7,8,9], predicted_values,label='Predicted Capacity')
+plt.title('True Capacity vs Predicted Capacity')
+plt.xlabel('Predicted Cycles')
+plt.ylabel('Capacity')
+plt.legend()
+plt.show()
+
+
