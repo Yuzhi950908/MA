@@ -93,6 +93,7 @@ print(y_train_reshaped.shape)
 #这里x_train_tensor:是99行，然后每行里面有个5个数，shape(99,5)，reshape 成(99,5,1)
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+#！！！我犯了一个重要的错误，我之前已经自己手动把数据整理成网络要的样子了。没必要这里在整理一遍了。这里在整理一遍，就变成4维的了！！！模型不接受的
 dataset_train=keras.preprocessing.timeseries_dataset_from_array(
     x_train_reshaped,
     y_train_reshaped,
@@ -122,9 +123,13 @@ for i in range(0,var_batch_size):
 x_val_tensor = tf.convert_to_tensor(x_val, dtype=tf.float32)
 y_val_tensor = tf.convert_to_tensor(y_val, dtype=tf.float32)
 x_val_reshaped = tf.reshape(x_val_tensor, [var_batch_size, past, num_features])
-y_val_reshaped = tf.reshape(y_val_tensor, [var_batch_size,future, num_features])
+y_val_reshaped = tf.reshape(y_val_tensor, [var_batch_size, future, num_features])
 print(x_val_reshaped.shape)
-print(y_val_reshaped.shape)#
+print(y_val_reshaped.shape)
+
+
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#！！！我犯了一个重要的错误，我之前已经自己手动把数据整理成网络要的样子了。没必要这里在整理一遍了。这里在整理一遍，就变成4维的了！！！模型不接受的
 dataset_val = keras.preprocessing.timeseries_dataset_from_array(
     x_val_reshaped,
     y_val_reshaped,
@@ -132,21 +137,23 @@ dataset_val = keras.preprocessing.timeseries_dataset_from_array(
     sampling_rate=1,
     batch_size=var_batch_size,
 )
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+
 
 ###LSTM model training###
 ################################################################################################################################
 #input一定是这样的,5个神经元，每个神经元能放N个特征进去。 这里单纯就是塑框架形状，还没有训练.
 learning_rate = 0.001
-#这里 input layer期待的是数据应该是(none,5,1)才对 none是样本数，5是时序，1是特征数量
-inputs = keras.layers.Input(shape=(past, num_features))
-#中间暂时设定32个LSTM unit，之后可以改
-lstm_out = keras.layers.LSTM(32)(inputs)
-#一次预测4个步
-outputs = keras.layers.Dense(4)(lstm_out)
 
-model = keras.Model(inputs=inputs, outputs=outputs)
-model.compile(optimizer=keras.optimizers.Adam(learning_rate=learning_rate), loss="mse")
-model.summary()
+multi_lstm_model = tf.keras.models.Sequential([
+    tf.keras.layers.LSTM(32, return_sequences=False),
+    tf.keras.layers.Dense(future * num_features, kernel_initializer=tf.keras.initializers.zeros()),
+    tf.keras.layers.Reshape([future, num_features])
+])
+
+multi_lstm_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=tf.keras.losses.MeanSquaredError())
+
 #我到这里model出来的结果是和keras上的例子一模一样的。
 ################################################################################################################################
 
@@ -171,13 +178,9 @@ modelckpt_callback = keras.callbacks.ModelCheckpoint(
     save_best_only=True,
 )
 
-#就这几行才是训练核心步骤
-history = model.fit(
-    dataset_train,
-    epochs=epochs,
-    validation_data=dataset_val,
-    callbacks=[es_callback, modelckpt_callback],
-)
+#就这行才是训练核心步骤
+history = multi_lstm_model.fit(x_train_reshaped, y_train_reshaped, epochs=epochs,
+                               validation_data=(x_val_reshaped,y_val_reshaped), callbacks=[es_callback, modelckpt_callback])
 
 ################################################################################################################################
 
@@ -223,6 +226,6 @@ x_pre_reshaped=tf.reshape(x_pre_tensor,[batch_size, past, num_features])
 #print(x_pre_reshaped.shape),(9, 5, 1)
 #然后进模型预测下面4个数。
 
-predictions = model.predict(x_pre_reshaped)
+predictions = multi_lstm_model.predict(x_pre_reshaped)
 
 #可视化
