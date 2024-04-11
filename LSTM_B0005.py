@@ -6,6 +6,28 @@ import keras
 import scipy.io
 from scipy.io import loadmat
 
+#1. validation 做minmax
+#2. 别跳数据。我们的数据太少。如果不行的话。就用整个B0005做 训练，整个B0006 做验证集。
+#3. 要打乱168数据。因为我只用了前面1衰减到0.9的数据。但是它没有学过最后0.9到0.8的数据。所以它才会预测出来一条横线
+#4. 或者直接用这个timeseries_dataset_from_array.
+#shuffle
+# #5. 或者直接B0005直接拉进去做训练
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ###Look at Data
 mat_data = loadmat('C:/Users/zheng/Desktop/MA/FY08Q4/B0005.mat')
 #print(list(mat_data.keys()))
@@ -47,6 +69,7 @@ split_fraction=0.7
 train_spilt = int(split_fraction*len(capacity))#117
 
 
+ #把这函数排除if __name__ = __main__之外
 def min_max_normalization(Data):
     min_val = min(Data)
     max_val = max(Data)
@@ -73,13 +96,13 @@ x_train=[]
 for i in range(0,batch_size):
     input=train_data[i:i+past]
     x_train.append(input)
-#print(x_train)
+print(x_train)
 
 y_train=[]
 for i in range(0,batch_size):
     label=train_data[i+past:i+windowsize]
     y_train.append(label)
-#print(y_train)
+print(y_train)
 
 
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -105,7 +128,7 @@ dataset_train=keras.preprocessing.timeseries_dataset_from_array(
 ###Validation dataset###
 val_split_rate=0.2
 val_split=int(len(capacity)*val_split_rate)
-start=train_spilt+windowsize       #!这里keras 把第一个windows框 也避开了，虽然不知道为什么。
+start=train_spilt+windowsize       #!没必要。这里keras 把第一个windows框 也避开了，虽然不知道为什么。
 end=train_spilt+val_split
 Validation_data=capacity[start:end]
 #print(len(Validation_data))#24     #一共就24个数据
@@ -147,13 +170,14 @@ dataset_val = keras.preprocessing.timeseries_dataset_from_array(
 learning_rate = 0.001
 
 multi_lstm_model = tf.keras.models.Sequential([
+    tf.keras.layers.Input(shape=(past, num_features)),
     tf.keras.layers.LSTM(32, return_sequences=False),
     tf.keras.layers.Dense(future * num_features, kernel_initializer=tf.keras.initializers.zeros()),
     tf.keras.layers.Reshape([future, num_features])
 ])
 
 multi_lstm_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=tf.keras.losses.MeanSquaredError())
-
+multi_lstm_model.summary()
 #我到这里model出来的结果是和keras上的例子一模一样的。
 ################################################################################################################################
 
@@ -164,7 +188,6 @@ epochs = 50
 #为了防止overfit，只要权重不咋变了，就结束，不要在训练了。所以设一个 call_funktion
 #相当于保存weights的快照的空文件，之后训练完之后，可以权重可视化。
 path_checkpoint = "lstm_model_checkpoint.weights.h5"
-#？？？？？？预先设定好参数,不允许它小于0，然后如果2个epoch，权重都不变了。就结束直接。但是我不知道为什么epoch应该48次就该停了，但它没停下来，也没报错
 es_callback = keras.callbacks.EarlyStopping(monitor="val_loss", min_delta=0, patience=2)
 
 
@@ -210,7 +233,7 @@ visualize_loss(history, "Training and Validation Loss")
 Prediction_data=capacity[train_spilt+val_split:]
 Prediction_data=min_max_normalization(Prediction_data)
 data_len=len(Prediction_data)
-print(data_len)
+#print(data_len)
 
 
 batch_size=data_len-windowsize
@@ -234,7 +257,7 @@ predictions = multi_lstm_model.predict(x_pre_reshaped)
 true_values = Prediction_data[9:9+windowsize]
 #print(true_values)
 predicted_values = predictions[8]
-print(predicted_values)
+#print(predicted_values)
 
 # 绘制对比图
 plt.scatter(range(1,len(true_values)+1), true_values, label='True Capacity')
