@@ -5,162 +5,69 @@ import matplotlib.pyplot as plt
 import keras
 import scipy.io
 from scipy.io import loadmat
+from DWT_All_Capacity import reconstructed_signal
 
-#1. validation 做minmax
-#2. 别跳数据。我们的数据太少。如果不行的话。就用整个B0005做 训练，整个B0006 做验证集。
-#3. 要打乱168数据。因为我只用了前面1衰减到0.9的数据。但是它没有学过最后0.9到0.8的数据。所以它才会预测出来一条横线
-#4. 或者直接用这个timeseries_dataset_from_array.
-#shuffle
-# #5. 或者直接B0005直接拉进去做训练
+#全数据集做normalization
+#keras.preprocessing.timeseries_dataset_from_array 滑动窗口对Input Label提取出数据，这里不洗牌
+#np.random 整个提取出的INput 和 Label 数据集去洗牌，然后再切割成训练。和Testing的数据集
+#fit 训练，然后训练的同时我只要定一个 Validation split rate 它自动帮我做验证
+#然后test 去做预测即可
 
+#Input Data
+capacity=reconstructed_signal
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-###Look at Data
-mat_data = loadmat('C:/Users/zheng/Desktop/MA/FY08Q4/B0005.mat')
-#print(list(mat_data.keys()))
-#相当于把 B0005.cycle 里的数据里所有cycles提取出来提出来
-RD=mat_data['B0005']
-#(([[具体的B0005的数据，一共616列]]))
-RD=RD[0][0][0][0]
-size=range(RD.shape[0])
-#print(RD[1])
-#RD=[(charge),(('discharge'),('24'),('time'),((V),(C),(t),(c),(v),(t),array([[1.85648742]]))......]
-#遍历整个RD，只找有 discharge的Label， 因为只想把Capacity拿出来先做可视化。
-
-#Capacity_firstcycle=RD[1][3][0][0][-1][0][0]
-#print(Capacity_firstcycle)
-
-capacity=[]
-for i in size:
-    if  RD[i][0][0]=='discharge':
-        find_capacity=RD[i][3][0][0][-1][0][0]
-        capacity.append(find_capacity)
-#print(capacity)
-#size_capacity=len(capacity)
-#print(size_capacity)
-
-
-###Visual Data
-x=range(len(capacity))
-y=capacity
-plt.figure()
-plt.plot(x,y,marker='o',color='b')
-plt.title('Capacity of B0005')
-plt.xlabel("Cycles")
-plt.ylabel("Capacity")
-plt.grid(True)
-#plt.show()
-
-###Datapreprocessing###
-split_fraction=0.7
-train_spilt = int(split_fraction*len(capacity))#117
-
-
- #把这函数排除if __name__ = __main__之外
+###全数据集做normalization
 def min_max_normalization(Data):
     min_val = min(Data)
     max_val = max(Data)
     normalized_data = [(x - min_val) / (max_val - min_val) for x in Data]
     return normalized_data
-train_data=min_max_normalization(capacity[:train_spilt])
+capacity=min_max_normalization(capacity[:])
 
-
-###Windowparameter###
+###抽取Inputdata
 past=5
 future=4
 windowsize=past+future
-sequence_length=past
+batch_size=len(capacity)-windowsize
+Dataset_input = tf.keras.preprocessing.timeseries_dataset_from_array(
+    capacity,
+    None,
+    sequence_length=past,
+    sampling_rate=1,
+    batch_size=batch_size,
+)
 
+# 将数据转换为 TensorFlow 张量
+input_data = []
+for batch in Dataset_input.as_numpy_iterator():
+    input_data.extend(batch)
+input_data_tensor = tf.convert_to_tensor(input_data)
 
-###Training dataset###
-num_features=1
-start=past+future
-end=train_spilt
-train_data=train_data[start:end]
-batch_size=len(train_data)-windowsize
-
-x_train=[]
-for i in range(0,batch_size):
-    input=train_data[i:i+past]
-    x_train.append(input)
-print(x_train)
-
-y_train=[]
-for i in range(0,batch_size):
-    label=train_data[i+past:i+windowsize]
-    y_train.append(label)
-print(y_train)
-
-
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#最重要的步骤，把数据整形成keras需要的样子
-x_train_tensor = tf.convert_to_tensor(x_train, dtype=tf.float32)
-y_train_tensor = tf.convert_to_tensor(y_train, dtype=tf.float32)
-x_train_reshaped = tf.reshape(x_train_tensor, [batch_size, past, num_features])
-y_train_reshaped = tf.reshape(y_train_tensor, [batch_size,future, num_features])
-print(x_train_reshaped.shape)
-print(y_train_reshaped.shape)
-#这里x_train_tensor:是99行，然后每行里面有个5个数，shape(99,5)，reshape 成(99,5,1)
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-#！！！我犯了一个重要的错误，我之前已经自己手动把数据整理成网络要的样子了。没必要这里在整理一遍了。这里在整理一遍，就变成4维的了！！！模型不接受的
-dataset_train=keras.preprocessing.timeseries_dataset_from_array(
-    x_train_reshaped,
-    y_train_reshaped,
-    sequence_length=past,#输入5个值
+#labeldata
+label_data=capacity[past:]
+Dataset_Label=tf.keras.preprocessing.timeseries_dataset_from_array(
+    label_data,
+    None,
+    sequence_length=future,
     sampling_rate=1,
     batch_size=batch_size
 )
+output_data = []
+for batch in Dataset_Label.as_numpy_iterator():
+    output_data.extend(batch)
+output_data_tensor = tf.convert_to_tensor(output_data)
 
-###Validation dataset###
-val_split_rate=0.2
-val_split=int(len(capacity)*val_split_rate)
-start=train_spilt+windowsize       #!没必要。这里keras 把第一个windows框 也避开了，虽然不知道为什么。
-end=train_spilt+val_split
-Validation_data=capacity[start:end]
-#print(len(Validation_data))#24     #一共就24个数据
-var_batch_size=len(Validation_data)-windowsize#但是批次是15个就因为碰到最后一个数据就停了
-x_val=[]
-for i in range(0,var_batch_size):
-    input_val=Validation_data[i:i+past]
-    x_val.append(input_val)
-
-y_val=[]
-for i in range(0,var_batch_size):
-    label_val=Validation_data[i+past:i+windowsize]
-    y_val.append(label_val)
-
-x_val_tensor = tf.convert_to_tensor(x_val, dtype=tf.float32)
-y_val_tensor = tf.convert_to_tensor(y_val, dtype=tf.float32)
-x_val_reshaped = tf.reshape(x_val_tensor, [var_batch_size, past, num_features])
-y_val_reshaped = tf.reshape(y_val_tensor, [var_batch_size, future, num_features])
-print(x_val_reshaped.shape)
-print(y_val_reshaped.shape)
+#将batchsize 给他对应起来做乱序
+np.random.seed(4)
+shuffled_indices=np.random.shuffle(tf.range(len(output_data_tensor)))
+shuffled_input_data = tf.gather(input_data_tensor, shuffled_indices)
+shuffled_output_data = tf.gather(output_data_tensor, shuffled_indices)
 
 
-#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-#！！！我犯了一个重要的错误，我之前已经自己手动把数据整理成网络要的样子了。没必要这里在整理一遍了。这里在整理一遍，就变成4维的了！！！模型不接受的
-dataset_val = keras.preprocessing.timeseries_dataset_from_array(
-    x_val_reshaped,
-    y_val_reshaped,
-    sequence_length=past,
-    sampling_rate=1,
-    batch_size=var_batch_size,
-)
-#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+
+
+
 
 
 
@@ -170,7 +77,6 @@ dataset_val = keras.preprocessing.timeseries_dataset_from_array(
 learning_rate = 0.001
 
 multi_lstm_model = tf.keras.models.Sequential([
-    tf.keras.layers.Input(shape=(past, num_features)),
     tf.keras.layers.LSTM(32, return_sequences=False),
     tf.keras.layers.Dense(future * num_features, kernel_initializer=tf.keras.initializers.zeros()),
     tf.keras.layers.Reshape([future, num_features])
@@ -201,10 +107,13 @@ modelckpt_callback = keras.callbacks.ModelCheckpoint(
     save_best_only=True,
 )
 
-#就这行才是训练核心步骤
-history = multi_lstm_model.fit(x_train_reshaped, y_train_reshaped, epochs=epochs,
-                               validation_data=(x_val_reshaped,y_val_reshaped), callbacks=[es_callback, modelckpt_callback])
-
+#就才是训练核心步骤
+history = multi_lstm_model.fit(
+    dataset_train,
+    epochs=epochs,
+    validation_data=dataset_val,
+    callbacks=[es_callback, modelckpt_callback]
+)
 ################################################################################################################################
 
 
@@ -251,12 +160,12 @@ x_pre_reshaped=tf.reshape(x_pre_tensor,[batch_size, past, num_features])
 
 #获取9组预测值。并且可视化出来和真实值对比
 #!!!!!这里我又犯了一个错误预测是一下子9个批次一起进去的，一次性出来一个(9,4,1)的张量。不能一次一次预测的。画图调用即可
-predictions = multi_lstm_model.predict(x_pre_reshaped)
+predictions = multi_lstm_model.predict(x_pre_reshaped )
 #print(predictions)
 #调最后一个window, 画图看一下就行了
-true_values = Prediction_data[9:9+windowsize]
+true_values = Prediction_data[0:9]
 #print(true_values)
-predicted_values = predictions[8]
+predicted_values = predictions[0]
 #print(predicted_values)
 
 # 绘制对比图
