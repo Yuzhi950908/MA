@@ -28,21 +28,25 @@ capacity=min_max_normalization(capacity[:])
 past=5
 future=4
 windowsize=past+future
-batch_size=len(capacity)-windowsize
+batch_size=len(capacity)-windowsize#159
+
+#这里是用滑动窗口的方式，提取出了159个批次的Inputdata数据
 Dataset_input = tf.keras.preprocessing.timeseries_dataset_from_array(
     capacity,
-    None,
+    None,# 这里本来应该定义标签的，但是我不需要，我后面要做打乱的
     sequence_length=past,
     sampling_rate=1,
     batch_size=batch_size,
 )
 
-# 将数据转换为 TensorFlow 张量
+# 检查一下是不是有159个sequence
 input_data = []
 for batch in Dataset_input.as_numpy_iterator():
     input_data.extend(batch)
-input_data_tensor = tf.convert_to_tensor(input_data)
-
+print(len(input_data))
+#不知道为什么有164个，但是我手动给他截成159个
+input_data = input_data[:batch_size]
+print(len(input_data))
 #labeldata
 label_data=capacity[past:]
 Dataset_Label=tf.keras.preprocessing.timeseries_dataset_from_array(
@@ -59,15 +63,12 @@ output_data_tensor = tf.convert_to_tensor(output_data)
 
 #将batchsize 给他对应起来做乱序
 np.random.seed(4)
-shuffled_indices=np.random.shuffle(tf.range(len(output_data_tensor)))
+shuffled_indices=tf.random.shuffle(tf.range(len(output_data_tensor)))
 shuffled_input_data = tf.gather(input_data_tensor, shuffled_indices)
 shuffled_output_data = tf.gather(output_data_tensor, shuffled_indices)
 
-
-
-
-
-
+#print(shuffled_input_data)
+#print(shuffled_output_data)
 
 
 
