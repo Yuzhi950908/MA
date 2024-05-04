@@ -34,19 +34,17 @@ batch_size=len(capacity)-windowsize#159
 Dataset_input = tf.keras.preprocessing.timeseries_dataset_from_array(
     capacity,
     None,# 这里本来应该定义标签的，但是我不需要，我后面要做打乱的
-    sequence_length=past,
+    sequence_length=past,#这里其实本来应该定义标签的长度，但是我这里没有标签，所以出来只有inputdata
     sampling_rate=1,
-    batch_size=batch_size,
+    batch_size=past,#这里填159没用的，因为这里定义的是每个批次的想要的长度
 )
-
-# 检查一下是不是有159个sequence
+######################################################################
 input_data = []
 for batch in Dataset_input.as_numpy_iterator():
     input_data.extend(batch)
-print(len(input_data))
-#不知道为什么有164个，但是我手动给他截成159个
+#手动截成159个数据
 input_data = input_data[:batch_size]
-print(len(input_data))
+
 #labeldata
 label_data=capacity[past:]
 Dataset_Label=tf.keras.preprocessing.timeseries_dataset_from_array(
@@ -54,36 +52,49 @@ Dataset_Label=tf.keras.preprocessing.timeseries_dataset_from_array(
     None,
     sequence_length=future,
     sampling_rate=1,
-    batch_size=batch_size
+    batch_size=future
 )
-output_data = []
+label_data=[]
 for batch in Dataset_Label.as_numpy_iterator():
-    output_data.extend(batch)
-output_data_tensor = tf.convert_to_tensor(output_data)
+    label_data.extend(batch)
+#手动截成159个数据
+label_data=label_data[:batch_size]
 
 #将batchsize 给他对应起来做乱序
-np.random.seed(4)
-shuffled_indices=tf.random.shuffle(tf.range(len(output_data_tensor)))
-shuffled_input_data = tf.gather(input_data_tensor, shuffled_indices)
-shuffled_output_data = tf.gather(output_data_tensor, shuffled_indices)
+tf.random.set_seed(4)
+shuffled_indices=tf.random.shuffle(tf.range(batch_size))
+shuffled_input_data = tf.gather(input_data, shuffled_indices)
+shuffled_label_data = tf.gather(label_data, shuffled_indices)
 
 #print(shuffled_input_data)
-#print(shuffled_output_data)
+#print(shuffled_label_data)
+print(shuffled_indices)
+#每次运行都是出来应该是一模一样的随机数？不然会每次训练出来的模型参数都不一样，不利于之后优化
 
 
-
+###Split Train_dataset and Test_dataset
+train_split=0.9
+test_split=0.1
+train_input = shuffled_input_data[:int(train_split*batch_size)]
+train_label = shuffled_label_data[:int(train_split*batch_size)]
+test_input = shuffled_input_data[int(train_split*batch_size):]
+test_label = shuffled_label_data[int(train_split*batch_size):]
+train_input=tf.expand_dims(train_input, axis=-1)
+train_label=tf.expand_dims(train_label, axis=-1)
+test_input=tf.expand_dims(test_input, axis=-1)
+test_label=tf.expand_dims(test_label, axis=-1)
 ###LSTM model training###
 ################################################################################################################################
 #input一定是这样的,5个神经元，每个神经元能放N个特征进去。 这里单纯就是塑框架形状，还没有训练.
 learning_rate = 0.001
-
+num_features=1
 multi_lstm_model = tf.keras.models.Sequential([
-    tf.keras.layers.LSTM(32, return_sequences=False),
-    tf.keras.layers.Dense(future * num_features, kernel_initializer=tf.keras.initializers.zeros()),
+    tf.keras.layers.LSTM(64, return_sequences=False, input_shape=(None, num_features)),
+    tf.keras.layers.Dense(future * num_features, kernel_initializer=tf.initializers.zeros()),
     tf.keras.layers.Reshape([future, num_features])
 ])
 
-multi_lstm_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=tf.keras.losses.MeanSquaredError())
+multi_lstm_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate), loss=tf.keras.losses.MeanSquaredError())
 multi_lstm_model.summary()
 #我到这里model出来的结果是和keras上的例子一模一样的。
 ################################################################################################################################
@@ -110,15 +121,17 @@ modelckpt_callback = keras.callbacks.ModelCheckpoint(
 
 #就才是训练核心步骤
 history = multi_lstm_model.fit(
-    dataset_train,
+    train_input,
+    train_label,
     epochs=epochs,
-    validation_data=dataset_val,
+    batch_size=batch_size,
+    validation_split=0.2,
     callbacks=[es_callback, modelckpt_callback]
 )
 ################################################################################################################################
 
 
-#重点每个epoch 训练集，和验证集是交替训练的。就是为了让模型多见点不同的数据。但是我没想明白，为什么不把验证集也做个标准化呢？除了验证集，连测试集都做标准化要，所有history里就两个keys，一个train_loss, 一个val_loss.
+#重点每个epoch 训练集，和验证集是交替训练的。就是为了让模型多见点不同的数据。所有history里就两个keys，一个train_loss, 一个val_loss.
 #就必须要用loss=history.history["loss"]把train loss的不同epoch的值调出来。所以epochs和loss 长度一摸一样的！这个可视化代码不会改变的可以直接记住它。以后需要参考就好了
 
 #weight visualize
@@ -139,43 +152,23 @@ visualize_loss(history, "Training and Validation Loss")
 
 
 ###Prediction###
-#不用分了剩下的全拿去test。
-Prediction_data=capacity[train_spilt+val_split:]
-Prediction_data=min_max_normalization(Prediction_data)
-data_len=len(Prediction_data)
-#print(data_len)
+#统共16组预测值。输入预测
+prediction_data = multi_lstm_model.predict(test_input)
 
-
-batch_size=data_len-windowsize
-x_pre=[]
-for i in range(0,batch_size):
-    input=Prediction_data[i:i+past]
-    x_pre.append(input)
-
-#然后把x_pre拿去还是整成keras想要的样子
-num_features=1
-x_pre_tensor=tf.convert_to_tensor(x_pre, dtype=tf.float32)
-
-x_pre_reshaped=tf.reshape(x_pre_tensor,[batch_size, past, num_features])
-#print(x_pre_reshaped.shape),(9, 5, 1)
-
-#获取9组预测值。并且可视化出来和真实值对比
-#!!!!!这里我又犯了一个错误预测是一下子9个批次一起进去的，一次性出来一个(9,4,1)的张量。不能一次一次预测的。画图调用即可
-predictions = multi_lstm_model.predict(x_pre_reshaped )
-#print(predictions)
-#调最后一个window, 画图看一下就行了
-true_values = Prediction_data[0:9]
-#print(true_values)
-predicted_values = predictions[0]
-#print(predicted_values)
-
-# 绘制对比图
-plt.scatter(range(1,len(true_values)+1), true_values, label='True Capacity')
-plt.scatter([6,7,8,9], predicted_values,label='Predicted Capacity')
-plt.title('True Capacity vs Predicted Capacity')
-plt.xlabel('Predicted Cycles')
-plt.ylabel('Capacity')
-plt.legend()
-plt.show()
-
+print(prediction_data)
+# 分别绘制5幅对比图
+for i in range(5):
+    #所谓window= test_input+ label
+    test_input_window = test_input[i]
+    test_label_window = test_label[i]
+    true_values=np.concatenate((test_input_window,test_label_window),axis=0)
+    #调出预测数据
+    predicted_values = prediction_data[i]
+    plt.scatter(range(1,len(true_values)+1), true_values, label='True Capacity')
+    plt.scatter([6,7,8,9], predicted_values,label='Predicted Capacity')
+    plt.title('True Capacity vs Predicted Capacity')
+    plt.xlabel('Predicted Cycles')
+    plt.ylabel('Capacity')
+    plt.legend()
+    plt.show()
 
