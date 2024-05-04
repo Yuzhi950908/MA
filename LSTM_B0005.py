@@ -83,7 +83,7 @@ test_input=tf.expand_dims(test_input, axis=-1)
 test_label=tf.expand_dims(test_label, axis=-1)
 ###LSTM model training###
 ################################################################################################################################
-#input一定是这样的,5个神经元，每个神经元能放N个特征进去。 这里单纯就是塑框架形状，还没有训练.
+#input一定是这样的,无所谓输入多少组sample，但每个神经元能放N个特征进去。 这里单纯就是塑框架形状，还没有训练.
 learning_rate = 0.001
 num_features=1
 multi_lstm_model = tf.keras.models.Sequential([
@@ -100,7 +100,7 @@ multi_lstm_model.summary()
 
 #training
 ################################################################################################################################
-epochs = 50
+epochs = 100
 #为了防止overfit，只要权重不咋变了，就结束，不要在训练了。所以设一个 call_funktion
 #相当于保存weights的快照的空文件，之后训练完之后，可以权重可视化。
 path_checkpoint = "lstm_model_checkpoint.weights.h5"
