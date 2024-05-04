@@ -61,15 +61,13 @@ for batch in Dataset_Label.as_numpy_iterator():
 label_data=label_data[:batch_size]
 
 #将batchsize 给他对应起来做乱序
-tf.random.set_seed(4)
+tf.random.set_seed(4)#不变的随机数
 shuffled_indices=tf.random.shuffle(tf.range(batch_size))
 shuffled_input_data = tf.gather(input_data, shuffled_indices)
 shuffled_label_data = tf.gather(label_data, shuffled_indices)
 
-#print(shuffled_input_data)
-#print(shuffled_label_data)
-print(shuffled_indices)
-#每次运行都是出来应该是一模一样的随机数？不然会每次训练出来的模型参数都不一样，不利于之后优化
+#print(shuffled_indices)
+
 
 
 ###Split Train_dataset and Test_dataset
