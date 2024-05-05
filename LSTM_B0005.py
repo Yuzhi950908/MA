@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import keras
 import scipy.io
 from scipy.io import loadmat
-from DWT_All_Capacity import reconstructed_signal
+from DWT_All_Capacity import reconstructed_signal_B0005
 
 #全数据集做normalization
 #keras.preprocessing.timeseries_dataset_from_array 滑动窗口对Input Label提取出数据，这里不洗牌
@@ -14,7 +14,7 @@ from DWT_All_Capacity import reconstructed_signal
 #然后test 去做预测即可
 
 #Input Data
-capacity=reconstructed_signal
+capacity=reconstructed_signal_B0005
 
 ###全数据集做normalization
 def min_max_normalization(Data):
@@ -94,7 +94,6 @@ multi_lstm_model = tf.keras.models.Sequential([
 
 multi_lstm_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate), loss=tf.keras.losses.MeanSquaredError())
 multi_lstm_model.summary()
-#我到这里model出来的结果是和keras上的例子一模一样的。
 ################################################################################################################################
 
 
