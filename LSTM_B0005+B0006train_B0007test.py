@@ -65,7 +65,7 @@ train_label=tf.expand_dims(train_label, axis=-1)
 print(train_label.shape)
 
 #model
-learning_rate = 0.002
+learning_rate = 0.001
 num_features=1
 multi_lstm_model = tf.keras.models.Sequential([
     tf.keras.layers.LSTM(64, return_sequences=False, input_shape=(None, num_features)),
@@ -87,7 +87,7 @@ history = multi_lstm_model.fit(
 )
 
 
-#test
+#test1
 test_input = capacity_B0007[:past]
 test_input = np.array(test_input)
 test_input_reshaped = test_input.reshape(1, past, num_features)
@@ -96,6 +96,20 @@ true_values=capacity_B0007[:windowsize]
 
 plt.scatter(range(1,len(true_values)+1), true_values, label='True Capacity')
 plt.scatter([6,7,8,9], prediction_data,label='Predicted Capacity')
+plt.title('True Capacity vs Predicted Capacity')
+plt.xlabel('Predicted Cycles')
+plt.ylabel('Capacity')
+plt.legend()
+plt.show()
+
+#test2
+test_input2 = capacity_B0007[150:150+past]
+test_input2= np.array(test_input2)
+test_input_reshaped2 = test_input.reshape(1, past, num_features)
+prediction_data2 = multi_lstm_model.predict(test_input_reshaped2)
+true_values2=capacity_B0007[150:150+windowsize]
+plt.scatter(range(1,len(true_values2)+1), true_values2, label='True Capacity')
+plt.scatter([6,7,8,9], prediction_data2,label='Predicted Capacity')
 plt.title('True Capacity vs Predicted Capacity')
 plt.xlabel('Predicted Cycles')
 plt.ylabel('Capacity')

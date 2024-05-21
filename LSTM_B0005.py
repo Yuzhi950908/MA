@@ -24,6 +24,20 @@ def min_max_normalization(Data):
     return normalized_data
 capacity=min_max_normalization(capacity[:])
 
+
+plt.figure(figsize=(10,6))
+plt.plot(capacity,marker='o',color='b',linestyle='-')
+plt.title('capacity after normalization')
+plt.xlabel('cycles')
+plt.ylabel('capacity')
+plt.show()
+
+
+
+
+
+
+
 ###抽取Inputdata
 past=5
 future=4
@@ -88,9 +102,17 @@ learning_rate = 0.001
 num_features=1
 multi_lstm_model = tf.keras.models.Sequential([
     tf.keras.layers.LSTM(64, return_sequences=False, input_shape=(None, num_features)),
-    tf.keras.layers.Dense(future * num_features, kernel_initializer=tf.initializers.zeros()),
+    tf.keras.layers.Dense(future * num_features, activation='relu'),
     tf.keras.layers.Reshape([future, num_features])
 ])
+
+
+# print(multi_lstm_model.input_shape)#这儿有问题， 不应该是None， none ，1
+# 加一个L1 或者 L2正则项 --> 为了避免 有一些权重过大 或者 过小 的情况
+# 只有Dense 层有激活函数，LSTM 没有考虑到！这样设置的话。并且不可以relu，选别的， 值域 还不可以是复数。
+# 最好的方式 是通过 官网的例子学习，甚至可以去看Matlab
+
+
 
 multi_lstm_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate), loss=tf.keras.losses.MeanSquaredError())
 multi_lstm_model.summary()
