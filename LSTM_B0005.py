@@ -80,7 +80,7 @@ shuffled_indices=tf.random.shuffle(tf.range(batch_size))
 shuffled_input_data = tf.gather(input_data, shuffled_indices)
 shuffled_label_data = tf.gather(label_data, shuffled_indices)
 
-#print(shuffled_indices)
+
 
 
 
@@ -91,29 +91,25 @@ train_input = shuffled_input_data[:int(train_split*batch_size)]
 train_label = shuffled_label_data[:int(train_split*batch_size)]
 test_input = shuffled_input_data[int(train_split*batch_size):]
 test_label = shuffled_label_data[int(train_split*batch_size):]
-train_input=tf.expand_dims(train_input, axis=-1)
-train_label=tf.expand_dims(train_label, axis=-1)
-test_input=tf.expand_dims(test_input, axis=-1)
-test_label=tf.expand_dims(test_label, axis=-1)
+train_input_Lstm=tf.expand_dims(train_input, axis=-1)
+train_label_Lstm=tf.expand_dims(train_label, axis=-1)
+test_input_Lstm=tf.expand_dims(test_input, axis=-1)
+test_label_Lstm=tf.expand_dims(test_label, axis=-1)
+print(train_input_Lstm)
 ###LSTM model training###
 ################################################################################################################################
 #input一定是这样的,无所谓输入多少组sample，但每个神经元能放N个特征进去。 这里单纯就是塑框架形状，还没有训练.
 learning_rate = 0.001
 num_features=1
 multi_lstm_model = tf.keras.models.Sequential([
-    tf.keras.layers.LSTM(64, return_sequences=False, input_shape=(past, num_features),activation='tanh', recurrent_activation='sigmoid'),
-    tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.Dense(future * num_features, activation='relu'),
+    tf.keras.layers.LSTM(64, return_sequences=False, input_shape=(past, num_features),activation='tanh', recurrent_activation='sigmoid', kernel_initializer=tf.keras.initializers.GlorotUniform()),
+    tf.keras.layers.Dense(future * num_features, activation='relu', kernel_initializer=tf.keras.initializers.GlorotUniform()),
     tf.keras.layers.Reshape([future, num_features])
 ])
 
 
-print(multi_lstm_model.input_shape)
-#这儿有问题， 不应该是None， none ，1
-# 加一个L1 或者 L2正则项 --> 为了避免 有一些权重过大 或者 过小 的情况
-# 只有Dense 层有激活函数，LSTM 没有考虑到！这样设置的话。并且不可以relu，选别的， 值域 还不可以是复数。
-# 最好的方式 是通过 官网的例子学习，甚至可以去看Matlab
-
+#kernel_initializer=tf.keras.initializers.GlorotUniform()
+#tf.keras.layers.Dropout(0.2)
 
 
 multi_lstm_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate), loss=tf.keras.losses.MeanSquaredError())
@@ -142,8 +138,8 @@ modelckpt_callback = keras.callbacks.ModelCheckpoint(
 
 #就才是训练核心步骤
 history = multi_lstm_model.fit(
-    train_input,
-    train_label,
+    train_input_Lstm,
+    train_label_Lstm,
     epochs=epochs,
     batch_size=batch_size,
     validation_split=0.2,
@@ -174,14 +170,14 @@ visualize_loss(history, "Training and Validation Loss")
 
 ###Prediction###
 #统共16组预测值。输入预测
-prediction_data = multi_lstm_model.predict(test_input)
+prediction_data = multi_lstm_model.predict(test_input_Lstm)
 
-print(prediction_data)
+#print(prediction_data)
 # 分别绘制5幅对比图
 for i in range(5):
     #所谓window= test_input+ label
-    test_input_window = test_input[i]
-    test_label_window = test_label[i]
+    test_input_window = test_input_Lstm[i]
+    test_label_window = test_label_Lstm[i]
     true_values=np.concatenate((test_input_window,test_label_window),axis=0)
     #调出预测数据
     predicted_values = prediction_data[i]
